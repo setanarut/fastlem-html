@@ -42,7 +42,6 @@
       display: flex
     }
 
-    /* ── LAYOUT ──────────────────────────────── */
     #sb {
       width: 300px;
       min-width: 300px;
@@ -201,7 +200,6 @@
       color: var(--disabled)
     }
 
-    /* pills */
     .pills {
       display: flex;
       border: 2px solid var(--border2);
@@ -240,7 +238,6 @@
       color: var(--txt)
     }
 
-    /* draw-only hiding */
     .draw-only {
       transition: opacity .2s, max-height .3s
     }
@@ -253,7 +250,6 @@
       margin: 0
     }
 
-    /* small buttons */
     .sbtn {
       padding: 6px 10px;
       font-size: 11px;
@@ -287,7 +283,6 @@
       margin-bottom: 7px
     }
 
-    /* preset list */
     #preset-list {
       border: 2px solid var(--border2);
       border-radius: 2px;
@@ -355,7 +350,6 @@
       color: var(--disabled)
     }
 
-    /* bottom / footer strips */
     #gi {
       padding: 6px 12px;
       font-size: 12px;
@@ -539,7 +533,6 @@
       cursor: not-allowed
     }
 
-    /* ── MAIN ───────────────────────────────── */
     main {
       flex: 1;
       position: relative;
@@ -584,7 +577,6 @@
       letter-spacing: 2px
     }
 
-    /* drop zone overlay */
     #drop-overlay {
       position: absolute;
       inset: 0;
@@ -617,7 +609,6 @@
       letter-spacing: 1.5px
     }
 
-    /* draw mode hint */
     #draw-hint {
       position: absolute;
       top: 14px;
@@ -711,7 +702,6 @@
 
   <main>
     <canvas id="cv"></canvas>
-    </div>
     <div id="draw-hint"></div>
     <div id="drop-overlay">
       <h3>⬇ Drop Heightmap Image</h3>
@@ -773,11 +763,16 @@
         <input type="text" id="presetName" placeholder="Preset name…" style="flex:1">
         <button class="sbtn" id="bSavePreset">Save</button>
       </div>
+      <div class="row">
+        <button class="sbtn" id="bExportPresets" style="flex:1">↓ Export JSON</button>
+        <button class="sbtn" id="bImportPresets" style="flex:1">↑ Import JSON</button>
+        <input type="file" id="fileImport" accept=".json" style="display:none">
+      </div>
       <div id="preset-list">
         <div id="preset-empty">No saved presets</div>
       </div>
 
-    </div><!-- /scrl -->
+    </div>
 
     <div id="pw">
       <div id="pb"></div>
@@ -806,14 +801,13 @@
         <label class="chk-lbl"><input type="checkbox" id="chkNorm"><span>Normalize</span></label>
       </div>
       <button class="main-btn" id="bDL" disabled>↓ Download PNG</button>
-      <button class="main-btn" id="bExportHM" disabled style="background:var(--card);border-color:var(--border2);color:var(--dim);font-size:11px">↓ Export Heightmap</button>
+      <button class="main-btn" id="bExportHM" disabled
+        style="background:var(--card);border-color:var(--border2);color:var(--dim);font-size:11px">↓ Export
+        Heightmap</button>
     </div>
   </aside>
 
   <script>
-    // ────────────────────────────────────────────
-    // PARAM SYNC
-    // ────────────────────────────────────────────
     function link(sId, nId, toNum, toSlide) {
       const sl = document.getElementById(sId);
       const nb = document.getElementById(nId);
@@ -848,14 +842,10 @@
     }
     function updateGI() {
       const nx = (gv('nL') / gv('nDx') | 0) + 1, ny = (gv('nLy') / gv('nDx') | 0) + 1;
-      document.getElementById('gis').textContent =
-        `${nx} × ${ny} = ${(nx * ny).toLocaleString('en')} nodes`;
+      document.getElementById('gis').textContent = `${nx} × ${ny} = ${(nx * ny).toLocaleString('en')} nodes`;
     }
     updateGI();
 
-    // ────────────────────────────────────────────
-    // VIEW MODE
-    // ────────────────────────────────────────────
     let viewMode = 'gray';
     document.querySelectorAll('#vmodes .pill').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -866,9 +856,6 @@
       });
     });
 
-    // ────────────────────────────────────────────
-    // DRAW TOOL MODE
-    // ────────────────────────────────────────────
     let drawTool = 'view';
     const drawHint = document.getElementById('draw-hint');
     document.querySelectorAll('#toolPills .pill').forEach(btn => {
@@ -891,9 +878,6 @@
       });
     });
 
-    // ────────────────────────────────────────────
-    // COLOR MAPS
-    // ────────────────────────────────────────────
     function colorGray(t) { const v = Math.max(0, Math.min(1, t)) * 255 | 0; return [v, v, v]; }
     const CSTOPS = [[0, [8, 18, 60]], [.1, [10, 51, 148]], [.2, [40, 140, 50]], [.4, [140, 185, 35]], [.6, [175, 140, 45]], [.8, [180, 170, 160]], [1, [248, 248, 248]]];
     function colorHyps(t) {
@@ -906,25 +890,18 @@
     }
     function hcolor(t) { return viewMode === 'color' ? colorHyps(t) : colorGray(t); }
 
-    // ────────────────────────────────────────────
-    // STATE
-    // ────────────────────────────────────────────
     const cv = document.getElementById('cv');
     const ctx2 = cv.getContext('2d');
     let lastZ = null, initZArr = null, boundary = null;
     let lastNx = 0, lastNy = 0, lastMn = 0, lastMx = 1, mx_ = 1;
-    let cursorCx = -1, cursorCy = -1; // canvas pixel coords
+    let cursorCx = -1, cursorCy = -1;
 
-    // ────────────────────────────────────────────
-    // RENDER
-    // ────────────────────────────────────────────
     function computeMinMax(z) {
       let mn = Infinity, mx = -Infinity;
       for (let i = 0; i < z.length; i++) { if (z[i] < mn) mn = z[i]; if (z[i] > mx) mx = z[i]; }
       return { mn, mx };
     }
 
-    // mn/mx optional — if omitted, reuses cached lastMn/lastMx (fast path)
     function renderCanvas(z, nx, ny, mn, mx) {
       if (mn === undefined) { mn = lastMn; mx = lastMx; }
       const rng = (mx - mn) || 1;
@@ -932,7 +909,6 @@
       cv.width = nx; cv.height = ny;
       viewMode === 'contour' ? renderContour(z, nx, ny, mn, rng) : renderShaded(z, nx, ny, mn, rng);
 
-      // boundary overlay in boundary mode
       if (boundary && drawTool === 'boundary') {
         const id2 = ctx2.getImageData(0, 0, nx, ny);
         for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -943,18 +919,7 @@
         }
         ctx2.putImageData(id2, 0, 0);
       }
-      // cursor ring
-      if (drawTool !== 'view' && cursorCx >= 0) {
-        const brushR = gv('nBrush');
-        ctx2.save();
-        ctx2.strokeStyle = drawTool === 'boundary' ? 'rgba(255,120,0,.9)' : 'rgba(255,255,255,.9)';
-        ctx2.lineWidth = 1.2;
-        ctx2.setLineDash([3, 2]);
-        ctx2.beginPath();
-        ctx2.arc(cursorCx, cursorCy, brushR, 0, Math.PI * 2);
-        ctx2.stroke();
-        ctx2.restore();
-      }
+
     }
 
     function renderShaded(z, nx, ny, mn, rng) {
@@ -994,27 +959,23 @@
       }
     }
 
-
-    // ────────────────────────────────────────────
-    // GRID INIT
-    // ────────────────────────────────────────────
     function initGrid(p) {
       const nx = (p.L / p.Dx | 0) + 1, ny = (p.Ly / p.Dx | 0) + 1, N = nx * ny;
       lastNx = nx; lastNy = ny;
-      const cx = (nx - 1) / 2, cy = (ny - 1) / 2;
-      const mxD = Math.sqrt(cx * cx + cy * cy) * p.Dx;
+      const mxD = Math.sqrt(nx * nx + ny * ny) * p.Dx;
       initZArr = new Float64Array(N);
       boundary = new Uint8Array(N);
       for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
         const idx = i + j * nx;
         if (i === 0 || i === nx - 1 || j === 0 || j === ny - 1) { boundary[idx] = 1; initZArr[idx] = 0; }
-        else { const d = Math.sqrt((i - cx) ** 2 + (j - cy) ** 2) * p.Dx; initZArr[idx] = Math.max(0, p.IH * (1 - d / mxD)) + (Math.random() * 2 - 1) * .01; }
+        else {
+          // source outside the grid at bottom-right corner (nx, -1) in array space = screen bottom-right
+          const d = Math.sqrt((i - nx) ** 2 + (j + 1) ** 2) * p.Dx;
+          initZArr[idx] = Math.max(0, p.IH * (1 - d / mxD)) + (Math.random() * 2 - 1) * .01;
+        }
       }
     }
 
-    // ────────────────────────────────────────────
-    // DRAW INTERACTION
-    // ────────────────────────────────────────────
     function canvasToGrid(e) {
       const r = cv.getBoundingClientRect();
       const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
@@ -1042,7 +1003,6 @@
           else if (!erase) boundary[idx] = 1;
         }
       }
-      // sync lastZ
       lastZ = initZArr.slice();
       for (let i = 0; i < lastZ.length; i++) if (boundary[i]) lastZ[i] = 0;
       renderCanvas(lastZ, lastNx, lastNy);
@@ -1072,6 +1032,7 @@
     document.getElementById('bInitGrid').addEventListener('click', () => {
       const p = getP();
       initGrid(p);
+      currentIter = 0;
       lastZ = initZArr.slice();
       const { mn, mx } = computeMinMax(lastZ);
       renderCanvas(lastZ, lastNx, lastNy, mn, mx);
@@ -1079,6 +1040,7 @@
       setDLEnabled(true);
       setStats(0, mn, mx, p.MaxIter);
     });
+
     document.getElementById('bClearElev').addEventListener('click', () => {
       if (!initZArr) return;
       for (let i = 0; i < initZArr.length; i++) if (!boundary[i]) initZArr[i] = 0;
@@ -1086,6 +1048,7 @@
       const { mn, mx } = computeMinMax(lastZ);
       renderCanvas(lastZ, lastNx, lastNy, mn, mx);
     });
+
     document.getElementById('bResetBound').addEventListener('click', () => {
       if (!boundary) return;
       boundary.fill(0);
@@ -1094,9 +1057,6 @@
       if (lastZ) { for (let i = 0; i < lastZ.length; i++) if (boundary[i]) lastZ[i] = 0; const { mn, mx } = computeMinMax(lastZ); renderCanvas(lastZ, lastNx, lastNy, mn, mx); }
     });
 
-    // ────────────────────────────────────────────
-    // PRESETS  (localStorage)
-    // ────────────────────────────────────────────
     const PK = 'saleve_presets';
     const loadPresets = () => { try { return JSON.parse(localStorage.getItem(PK) || '[]'); } catch (e) { return []; } };
     const savePresets = l => localStorage.setItem(PK, JSON.stringify(l));
@@ -1123,6 +1083,7 @@
         cont.appendChild(item);
       });
     }
+
     document.getElementById('bSavePreset').addEventListener('click', () => {
       const name = document.getElementById('presetName').value.trim() || `Preset ${new Date().toLocaleString('en', { hour: '2-digit', minute: '2-digit' })}`;
       const list = loadPresets();
@@ -1132,9 +1093,46 @@
     });
     renderPresetList();
 
-    // ────────────────────────────────────────────
-    // LEM CORE
-    // ────────────────────────────────────────────
+    document.getElementById('bExportPresets').addEventListener('click', () => {
+      const list = loadPresets();
+      const json = JSON.stringify(list, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `saleve_presets_${Date.now()}.json`;
+      a.click();
+    });
+
+    document.getElementById('bImportPresets').addEventListener('click', () => {
+      document.getElementById('fileImport').click();
+    });
+
+    document.getElementById('fileImport').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          if (!Array.isArray(imported)) throw new Error();
+          const existing = loadPresets();
+          const existingNames = new Set(existing.map(p => p.name));
+          let added = 0;
+          for (const p of imported) {
+            if (p.name && p.params) {
+              // avoid duplicates by name
+              if (!existingNames.has(p.name)) { existing.push(p); existingNames.add(p.name); added++; }
+            }
+          }
+          savePresets(existing);
+          renderPresetList();
+          alert(`${added} preset(s) imported.`);
+        } catch { alert('Invalid preset JSON file.'); }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
     function lemStep(z, nx, ny, N, Dx, U, Kr, Mr, Mc, Sc, Ac, Kc, Ar, bound) {
       const recv = new Int32Array(N).fill(-1);
       for (let idx = 0; idx < N; idx++) {
@@ -1179,10 +1177,7 @@
       return nz;
     }
 
-    // ────────────────────────────────────────────
-    // RUN CONTROL
-    // ────────────────────────────────────────────
-    let running = false, stopFlag = false;
+    let running = false, stopFlag = false, currentIter = 0;
     const bRun = document.getElementById('bRun');
     const bStop = document.getElementById('bStop');
     const bDL = document.getElementById('bDL');
@@ -1206,32 +1201,52 @@
     bRun.addEventListener('click', () => {
       if (running) return;
       const p = getP();
-      const Sc = Math.tan(p.Sc * Math.PI / 180);
-      const Kc = p.U / (Sc * Math.pow(p.Ac, p.Mc));
-      const Ar = Math.pow(Kc / p.Kr, 1 / (p.Mr - p.Mc));
       const expNx = (p.L / p.Dx | 0) + 1, expNy = (p.Ly / p.Dx | 0) + 1;
-      if (!initZArr || lastNx !== expNx || lastNy !== expNy) initGrid(p);
+
+      if (!initZArr || lastNx !== expNx || lastNy !== expNy) {
+        initGrid(p);
+        currentIter = 0;
+      }
+
+      if (currentIter >= p.MaxIter) {
+        currentIter = 0;
+        lastZ = initZArr.slice();
+        for (let i = 0; i < lastZ.length; i++) if (boundary[i]) lastZ[i] = 0;
+      }
+
       const nx = lastNx, ny = lastNy, N = nx * ny;
       running = true; stopFlag = false;
       bRun.disabled = true; bStop.disabled = false; setDLEnabled(false);
-      pb.style.width = '0%'; ov.style.opacity = '0';
-      let z = initZArr.slice();
+      pb.style.width = (currentIter / p.MaxIter * 100) + '%';
+      ov.style.opacity = '0';
+
+      let z = lastZ ? lastZ : initZArr.slice();
       for (let i = 0; i < z.length; i++) if (boundary[i]) z[i] = 0;
       lastZ = z;
+
       const { mn: mn0, mx: mx0 } = computeMinMax(z);
       renderCanvas(z, nx, ny, mn0, mx0);
-      setStats(0, mn0, mx0, p.MaxIter);
-      let iter = 0;
+      setStats(currentIter, mn0, mx0, p.MaxIter);
+
       (function step() {
-        if (stopFlag || iter >= p.MaxIter) {
+        const cp = getP();
+
+        if (stopFlag || currentIter >= cp.MaxIter) {
           running = false; bRun.disabled = false; bStop.disabled = true; setDLEnabled(true);
           const { mn, mx } = computeMinMax(lastZ);
           renderCanvas(lastZ, nx, ny, mn, mx);
-          setStats(iter, mn, mx, p.MaxIter);
-          pb.style.width = '100%'; return;
+          setStats(currentIter, mn, mx, cp.MaxIter);
+          pb.style.width = Math.min(100, (currentIter / cp.MaxIter * 100)) + '%';
+          return;
         }
-        z = lemStep(z, nx, ny, N, p.Dx, p.U, p.Kr, p.Mr, p.Mc, Sc, p.Ac, Kc, Ar, boundary);
-        lastZ = z; iter++;
+
+        const Sc = Math.tan(cp.Sc * Math.PI / 180);
+        const Kc = cp.U / (Sc * Math.pow(cp.Ac, cp.Mc));
+        const Ar = Math.pow(Kc / cp.Kr, 1 / (cp.Mr - cp.Mc));
+
+        z = lemStep(z, nx, ny, N, cp.Dx, cp.U, cp.Kr, cp.Mr, cp.Mc, Sc, cp.Ac, Kc, Ar, boundary);
+        lastZ = z; currentIter++;
+
         if (document.getElementById('chkLive').checked) {
           let mn, mx;
           if (document.getElementById('chkNorm').checked) {
@@ -1240,19 +1255,23 @@
             mn = lastMn; mx = lastMx;
           }
           renderCanvas(z, nx, ny, mn, mx);
-          setStats(iter, mn, mx, p.MaxIter);
+          setStats(currentIter, mn, mx, cp.MaxIter);
         } else {
-          setStats(iter, lastMn, lastMx, p.MaxIter);
+          setStats(currentIter, lastMn, lastMx, cp.MaxIter);
         }
-        pb.style.width = (iter / p.MaxIter * 100) + '%';
+
+        pb.style.width = (currentIter / cp.MaxIter * 100) + '%';
         setTimeout(step, 0);
       })();
     });
+
     bStop.addEventListener('click', () => { stopFlag = true; });
 
-    // ────────────────────────────────────────────
-    // DOWNLOAD PNG
-    // ────────────────────────────────────────────
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !running) bRun.click();
+      if (e.key === ' ' && running) { e.preventDefault(); bStop.click(); }
+    });
+
     bDL.addEventListener('click', () => {
       if (!lastZ) return;
       const nx = lastNx, ny = lastNy, mn = lastMn, mx = lastMx, rng = (mx - mn) || 1;
@@ -1307,20 +1326,17 @@
       }
       const a = document.createElement('a'); a.href = out.toDataURL('image/png'); a.download = `saleve_lem_${Date.now()}.png`; a.click();
     });
-    // ────────────────────────────────────────────
-    // FILL BUTTON
-    // ────────────────────────────────────────────
+
     document.getElementById('bFill').addEventListener('click', () => {
       if (!initZArr) {
         const p = getP();
         initGrid(p);
+        currentIter = 0;
         document.getElementById('ov').style.opacity = '0';
       }
       if (drawTool === 'boundary') {
-        // Fill all non-edge cells as boundary
         for (let j = 1; j < lastNy - 1; j++) for (let i = 1; i < lastNx - 1; i++) boundary[i + j * lastNx] = 1;
       } else {
-        // Fill all non-boundary cells with paint elevation
         const ev = gv('nEV');
         for (let i = 0; i < initZArr.length; i++) if (!boundary[i]) initZArr[i] = ev;
       }
@@ -1332,9 +1348,6 @@
       setStats(0, mn, mx, getP().MaxIter);
     });
 
-    // ────────────────────────────────────────────
-    // DRAG-AND-DROP IMAGE AS HEIGHTMAP
-    // ────────────────────────────────────────────
     const mainEl = document.querySelector('main');
     const dropOverlay = document.getElementById('drop-overlay');
 
@@ -1355,17 +1368,15 @@
         const img = new Image();
         img.onload = () => {
           const p = getP();
-          // Always do a fresh initGrid so boundary/size matches current params
           initGrid(p);
+          currentIter = 0;
           const nx = lastNx, ny = lastNy;
-          // Draw image into offscreen canvas at grid resolution
           const oc = document.createElement('canvas');
           oc.width = nx; oc.height = ny;
           const oc2 = oc.getContext('2d');
           oc2.drawImage(img, 0, 0, nx, ny);
           const px = oc2.getImageData(0, 0, nx, ny).data;
-          // luma/255 * IH — pure linear mapping, no noise
-          // (noise on near-zero cells randomises drainage and creates cheese-like artifacts)
+
           for (let j = 0; j < ny; j++) {
             const imgJ = ny - 1 - j;
             for (let i = 0; i < nx; i++) {
@@ -1389,11 +1400,7 @@
       reader.readAsDataURL(file);
     });
 
-    // ────────────────────────────────────────────
-    // EXPORT HEIGHTMAP — 16-bit grayscale PNG
-    // ────────────────────────────────────────────
     function encodePNG16(width, height, getVal) {
-      // getVal(x, y) → 0..65535
       const crc32 = (() => {
         const t = new Uint32Array(256);
         for (let i = 0; i < 256; i++) {
@@ -1420,17 +1427,15 @@
         return buf;
       }
 
-      // IHDR
       const ihdr = new Uint8Array(13);
       const iv = new DataView(ihdr.buffer);
       iv.setUint32(0, width); iv.setUint32(4, height);
       ihdr[8] = 16; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
 
-      // Raw scanlines: filter byte (0) + width*2 bytes per row
       const scanline = width * 2 + 1;
       const raw = new Uint8Array(height * scanline);
       for (let y = 0; y < height; y++) {
-        raw[y * scanline] = 0; // filter None
+        raw[y * scanline] = 0;
         for (let x = 0; x < width; x++) {
           const v = getVal(x, y) & 0xFFFF;
           raw[y * scanline + 1 + x * 2] = (v >> 8) & 0xFF;
@@ -1438,14 +1443,11 @@
         }
       }
 
-      // Deflate via canvas trick — use CompressionStream if available, else store blocks
-      // We'll use pako-free approach: zlib with deflate store blocks (no compression)
-      // For a heightmap this is fine — still lossless, just larger file
       const BSIZE = 65535;
       const blocks = Math.ceil(raw.length / BSIZE);
       const zlib = new Uint8Array(2 + raw.length + blocks * 5 + 4);
       let pos = 0;
-      zlib[pos++] = 0x78; zlib[pos++] = 0x01; // zlib header (no compression)
+      zlib[pos++] = 0x78; zlib[pos++] = 0x01;
       let adler_s1 = 1, adler_s2 = 0;
       for (let b = 0; b < blocks; b++) {
         const start = b * BSIZE;
@@ -1461,12 +1463,12 @@
           adler_s2 = (adler_s2 + adler_s1) % 65521;
         }
       }
-      // Adler-32 checksum
+
       zlib[pos++] = (adler_s2 >> 8) & 0xFF; zlib[pos++] = adler_s2 & 0xFF;
       zlib[pos++] = (adler_s1 >> 8) & 0xFF; zlib[pos++] = adler_s1 & 0xFF;
       const idat = zlib.slice(0, pos);
 
-      const sig = new Uint8Array([137,80,78,71,13,10,26,10]);
+      const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
       const enc = new TextEncoder();
       const parts = [
         sig,
@@ -1488,7 +1490,7 @@
       document.getElementById('nIH').value = Math.round(ih);
       document.getElementById('sIH').value = Math.round(ih);
       const png = encodePNG16(nx, ny, (x, y) => {
-        const jf = ny - 1 - y; // flip Y
+        const jf = ny - 1 - y;
         return Math.min(65535, (lastZ[x + jf * nx] / ih * 65535) | 0);
       });
       const blob = new Blob([png], { type: 'image/png' });
