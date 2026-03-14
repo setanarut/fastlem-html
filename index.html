@@ -18,7 +18,7 @@
       --red: #ff8787;
       --txt: #ffffff;
       --dim: #e0e0e0;
-      --disabled: #e4e4e4;
+      --disabled: #565656;
       --mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     }
 
@@ -277,6 +277,13 @@
       background: #180a0a
     }
 
+    .sbtn:disabled,
+    .pill:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none
+    }
+
     .row {
       display: flex;
       gap: 5px;
@@ -527,10 +534,12 @@
       box-shadow: 0 0 12px rgba(96, 200, 255, .2)
     }
 
-    #bDL:disabled {
-      border-color: var(--disabled);
-      color: var(--disabled);
-      cursor: not-allowed
+    #bDL:disabled,
+    #bExportHM:disabled {
+      border-color: var(--border2);
+      color: var(--border2);
+      cursor: not-allowed;
+      opacity: 0.45
     }
 
     main {
@@ -650,8 +659,8 @@
       </div>
       <div class="pg">
         <div class="pl"><span class="pn">Iterations</span></div>
-        <div class="pr"><input type="range" id="sIt" min="0" max="300" step="5" value="60"><input type="number" id="nIt"
-            value="50"></div>
+        <div class="pr"><input type="range" id="sIt" min="0" max="300" step="5" value="200"><input type="number" id="nIt"
+            value="200"></div>
       </div>
 
       <div class="sec">Tectonic</div>
@@ -798,7 +807,10 @@
       </div>
       <div class="chk-row">
         <label class="chk-lbl"><input type="checkbox" id="chkLive" checked><span>Live Render</span></label>
-        <label class="chk-lbl"><input type="checkbox" id="chkNorm"><span>Normalize</span></label>
+        <label class="chk-lbl"><input type="checkbox" id="chkNorm" checked><span>Normalize</span></label>
+      </div>
+      <div class="chk-row">
+        <label class="chk-lbl" title="Continue computing even when the tab is in the background"><input type="checkbox" id="chkBG"><span>Background</span></label>
       </div>
       <button class="main-btn" id="bDL" disabled>↓ Download PNG</button>
       <button class="main-btn" id="bExportHM" disabled
@@ -846,13 +858,37 @@
     }
     updateGI();
 
+    // Sadece Live Render seçiliyken görüntüyü günceller (view/draw etkileşimleri için)
+    function liveRender(z, nx, ny, mn, mx) {
+      if (!document.getElementById('chkLive').checked) return;
+      renderCanvas(z, nx, ny, mn, mx);
+    }
+
+    // Live Render kapalıyken tüm çizim/grid araçlarını devre dışı bırakır
+    function setDrawEnabled(on) {
+      ['bInitGrid', 'bFill', 'bClearElev', 'bResetBound'].forEach(id => {
+        document.getElementById(id).disabled = !on;
+      });
+      document.querySelectorAll('#toolPills .pill, #vmodes .pill').forEach(b => {
+        b.disabled = !on;
+      });
+      ['sBrush','nBrush','sEV','nEV'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !on;
+      });
+    }
+
+    document.getElementById('chkLive').addEventListener('change', function() {
+      setDrawEnabled(this.checked);
+    });
+
     let viewMode = 'gray';
     document.querySelectorAll('#vmodes .pill').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('#vmodes .pill').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         viewMode = btn.dataset.mode;
-        if (lastZ) renderCanvas(lastZ, lastNx, lastNy);
+        if (lastZ) liveRender(lastZ, lastNx, lastNy);
       });
     });
 
@@ -874,7 +910,7 @@
         drawHint.textContent = isElev
           ? 'ELEVATION DRAW — left: paint  ·  right: erase'
           : 'BOUNDARY DRAW — left: add outlet  ·  right: remove';
-        if (lastZ) renderCanvas(lastZ, lastNx, lastNy);
+        if (lastZ) liveRender(lastZ, lastNx, lastNy);
       });
     });
 
@@ -1005,12 +1041,11 @@
       }
       lastZ = initZArr.slice();
       for (let i = 0; i < lastZ.length; i++) if (boundary[i]) lastZ[i] = 0;
-      renderCanvas(lastZ, lastNx, lastNy);
+      liveRender(lastZ, lastNx, lastNy);
     }
-
-    let isPainting = false;
     cv.addEventListener('mousedown', e => {
       if (drawTool === 'view') return;
+      if (!document.getElementById('chkLive').checked) return;
       e.preventDefault();
       if (!initZArr) { initGrid(getP()); lastZ = initZArr.slice(); document.getElementById('ov').style.opacity = '0'; }
       isPainting = true;
@@ -1022,11 +1057,11 @@
       cursorCx = fcx; cursorCy = lastNy - 1 - fcy;
       if (drawTool !== 'view') {
         if (isPainting) applyPaint(gi, gj, e.buttons === 2);
-        else if (lastZ) renderCanvas(lastZ, lastNx, lastNy);
+        else if (lastZ) liveRender(lastZ, lastNx, lastNy);
       }
     });
     cv.addEventListener('mouseup', () => { isPainting = false; });
-    cv.addEventListener('mouseleave', () => { isPainting = false; cursorCx = -1; if (lastZ && drawTool !== 'view') renderCanvas(lastZ, lastNx, lastNy); });
+    cv.addEventListener('mouseleave', () => { isPainting = false; cursorCx = -1; if (lastZ && drawTool !== 'view') liveRender(lastZ, lastNx, lastNy); });
     cv.addEventListener('contextmenu', e => e.preventDefault());
 
     document.getElementById('bInitGrid').addEventListener('click', () => {
@@ -1178,6 +1213,7 @@
     }
 
     let running = false, stopFlag = false, currentIter = 0;
+    let lemWorker = null, workerZ = null, workerInFlight = false;
     const bRun = document.getElementById('bRun');
     const bStop = document.getElementById('bStop');
     const bDL = document.getElementById('bDL');
@@ -1188,8 +1224,6 @@
     function setDLEnabled(v) {
       bDL.disabled = !v;
       bExportHM.disabled = !v;
-      bExportHM.style.borderColor = v ? 'var(--blue)' : 'var(--border2)';
-      bExportHM.style.color = v ? 'var(--blue)' : 'var(--dim)';
     }
 
     function setStats(iter, mn, mx, maxIter) {
@@ -1197,6 +1231,77 @@
       document.getElementById('stMn').textContent = mn.toFixed(0) + ' m';
       document.getElementById('stMx').textContent = mx.toFixed(0) + ' m';
     }
+
+    function finishRun() {
+      running = false; stopFlag = false; workerInFlight = false;
+      bRun.disabled = false; bStop.disabled = true; setDLEnabled(true);
+      setDrawEnabled(document.getElementById('chkLive').checked);
+      const cp = getP(), nx = lastNx, ny = lastNy;
+      const { mn, mx } = computeMinMax(lastZ);
+      renderCanvas(lastZ, nx, ny, mn, mx);
+      setStats(currentIter, mn, mx, cp.MaxIter);
+      pb.style.width = Math.min(100, currentIter / cp.MaxIter * 100) + '%';
+    }
+
+    // lemStep'i Worker'a gönder — main thread bloke olmaz
+    function dispatchToWorker(z) {
+      if (!running) return;
+      const cp = getP();
+      if (stopFlag || currentIter >= cp.MaxIter) { finishRun(); return; }
+      // Sekme gizli ve arka plan seçili değilse dur
+      if (document.hidden && !document.getElementById('chkBG').checked) {
+        workerZ = z; workerInFlight = false; return;
+      }
+      const nx = lastNx, ny = lastNy, N = nx * ny;
+      const Sc = Math.tan(cp.Sc * Math.PI / 180);
+      const Kc = cp.U / (Sc * Math.pow(cp.Ac, cp.Mc));
+      const Ar = Math.pow(Kc / cp.Kr, 1 / (cp.Mr - cp.Mc));
+      workerInFlight = true;
+      // z.buffer.slice(0): kopya gönder, lastZ main thread'de geçerli kalır
+      lemWorker.postMessage({
+        z: z.buffer.slice(0),
+        bound: boundary.buffer.slice(0),
+        nx, ny, N,
+        Dx: cp.Dx, U: cp.U, Kr: cp.Kr, Mr: cp.Mr, Mc: cp.Mc,
+        Sc, Ac: cp.Ac, Kc, Ar
+      });
+    }
+
+    function initWorker() {
+      if (lemWorker) lemWorker.terminate();
+      // lemStep'in kaynak kodunu Worker blob'u olarak oluştur
+      const src = 'var lemStep=' + lemStep.toString() + ';' +
+        'self.onmessage=function(e){' +
+        'var d=e.data,z=new Float64Array(d.z),bound=new Uint8Array(d.bound);' +
+        'var nz=lemStep(z,d.nx,d.ny,d.N,d.Dx,d.U,d.Kr,d.Mr,d.Mc,d.Sc,d.Ac,d.Kc,d.Ar,bound);' +
+        'self.postMessage({nz:nz.buffer},[nz.buffer]);};';
+      lemWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      lemWorker.onmessage = function(e) {
+        if (!running) return;
+        workerInFlight = false;
+        workerZ = new Float64Array(e.data.nz);
+        lastZ = workerZ; currentIter++;
+        const cp = getP(), nx = lastNx, ny = lastNy;
+        if (document.getElementById('chkLive').checked) {
+          let mn, mx;
+          if (document.getElementById('chkNorm').checked) {
+            ({ mn, mx } = computeMinMax(workerZ));
+          } else { mn = lastMn; mx = lastMx; }
+          renderCanvas(workerZ, nx, ny, mn, mx);
+          setStats(currentIter, mn, mx, cp.MaxIter);
+        } else {
+          setStats(currentIter, lastMn, lastMx, cp.MaxIter);
+        }
+        pb.style.width = (currentIter / cp.MaxIter * 100) + '%';
+        dispatchToWorker(workerZ);
+      };
+      lemWorker.onerror = function(e) { console.error('Worker hatası:', e); finishRun(); };
+    }
+
+    // Sekme tekrar görünür olduğunda (ve arka plan seçili değilse) devam et
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && running && !workerInFlight) dispatchToWorker(workerZ);
+    });
 
     bRun.addEventListener('click', () => {
       if (running) return;
@@ -1214,58 +1319,28 @@
         for (let i = 0; i < lastZ.length; i++) if (boundary[i]) lastZ[i] = 0;
       }
 
-      const nx = lastNx, ny = lastNy, N = nx * ny;
-      running = true; stopFlag = false;
-      bRun.disabled = true; bStop.disabled = false; setDLEnabled(false);
+      running = true; stopFlag = false; workerInFlight = false;
+      bRun.disabled = true; bStop.disabled = false; setDLEnabled(false); setDrawEnabled(false);
       pb.style.width = (currentIter / p.MaxIter * 100) + '%';
       ov.style.opacity = '0';
 
-      let z = lastZ ? lastZ : initZArr.slice();
+      const nx = lastNx, ny = lastNy;
+      let z = lastZ ? lastZ.slice() : initZArr.slice();
       for (let i = 0; i < z.length; i++) if (boundary[i]) z[i] = 0;
-      lastZ = z;
+      lastZ = z; workerZ = z;
 
       const { mn: mn0, mx: mx0 } = computeMinMax(z);
       renderCanvas(z, nx, ny, mn0, mx0);
       setStats(currentIter, mn0, mx0, p.MaxIter);
 
-      (function step() {
-        const cp = getP();
-
-        if (stopFlag || currentIter >= cp.MaxIter) {
-          running = false; bRun.disabled = false; bStop.disabled = true; setDLEnabled(true);
-          const { mn, mx } = computeMinMax(lastZ);
-          renderCanvas(lastZ, nx, ny, mn, mx);
-          setStats(currentIter, mn, mx, cp.MaxIter);
-          pb.style.width = Math.min(100, (currentIter / cp.MaxIter * 100)) + '%';
-          return;
-        }
-
-        const Sc = Math.tan(cp.Sc * Math.PI / 180);
-        const Kc = cp.U / (Sc * Math.pow(cp.Ac, cp.Mc));
-        const Ar = Math.pow(Kc / cp.Kr, 1 / (cp.Mr - cp.Mc));
-
-        z = lemStep(z, nx, ny, N, cp.Dx, cp.U, cp.Kr, cp.Mr, cp.Mc, Sc, cp.Ac, Kc, Ar, boundary);
-        lastZ = z; currentIter++;
-
-        if (document.getElementById('chkLive').checked) {
-          let mn, mx;
-          if (document.getElementById('chkNorm').checked) {
-            ({ mn, mx } = computeMinMax(z));
-          } else {
-            mn = lastMn; mx = lastMx;
-          }
-          renderCanvas(z, nx, ny, mn, mx);
-          setStats(currentIter, mn, mx, cp.MaxIter);
-        } else {
-          setStats(currentIter, lastMn, lastMx, cp.MaxIter);
-        }
-
-        pb.style.width = (currentIter / cp.MaxIter * 100) + '%';
-        setTimeout(step, 0);
-      })();
+      initWorker();
+      dispatchToWorker(z);
     });
 
-    bStop.addEventListener('click', () => { stopFlag = true; });
+    bStop.addEventListener('click', () => {
+      stopFlag = true;
+      if (!workerInFlight && running) finishRun();
+    });
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !running) bRun.click();
