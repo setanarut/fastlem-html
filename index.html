@@ -1235,7 +1235,7 @@
     function finishRun() {
       running = false; stopFlag = false; workerInFlight = false;
       bRun.disabled = false; bStop.disabled = true; setDLEnabled(true);
-      setDrawEnabled(document.getElementById('chkLive').checked);
+      setDrawEnabled(true);
       const cp = getP(), nx = lastNx, ny = lastNy;
       const { mn, mx } = computeMinMax(lastZ);
       renderCanvas(lastZ, nx, ny, mn, mx);
